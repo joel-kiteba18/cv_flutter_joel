@@ -1,10 +1,10 @@
 # cv_flutter_joel
-Nom:YOMBIKALE
-Post-nom: KITEBA
-Prenom: Joel
-Promot: L4 LSI
+Nom:YOMBIKALE;  
+Post-nom: KITEBA;
+Prenom: Joel;
+Promotion: L4 LSI;
 Cours: Programmation Mobile
-A new Flutter project.
+
 
 
 <img width="497" height="687" alt="login" src="https://github.com/user-attachments/assets/f3fc4076-4a73-4e6b-9f40-a7a92bc4da1b" />
