@@ -1,21 +1,26 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:http/http.dart' as http;
+
+// URL de base de votre API PHP en local (pour Chrome / Linux)
+const String apiBaseUrl = 'http://localhost:8000';
 
 void main() {
   runApp(const MonCvApp());
 }
 
 // ============================================================================
-// 1. VOS DONNÉES PERSONNELLES (MODIFIEZ UNIQUEMENT CETTE SECTION)
+// 1. VOS DONNÉES PERSONNELLES (CV & COORDONNÉES)
 // ============================================================================
 class CvData {
-  // --- PAGE 2 : VOTRE CV ---
   static const String nomComplet = "Joël Kiteba";
   static const String titreProfil =
       "Développeur Mobile Senior (Flutter & Android)";
-  static const String photoProfilUrl = "assets/images/joel.jpg"; // Remplacez par le chemin de votre photo dans le dossier assets/images
+  static const String photoProfilUrl = "assets/images/joel.jpg";
   static const String biographie =
-      "Professionnel en programmation mobile, spécialisé dans la conception d'applications performantes, intuitives et sécurisées avec Flutter, Dart et Android natif.";
+      "Professionnel en Réseau Informatique spécialisé dans la conception d'applications performantes, intuitives et sécurisées avec Flutter, Dart et Android natif.";
 
   static const List<Map<String, String>> formations = [
     {
@@ -75,42 +80,13 @@ class CvData {
     "Lecture",
   ];
 
-  // --- PAGE 3 : VOTRE FAMILLE ---
-  static const List<Map<String, String>> famille = [
-    {
-      "nom": "Jean-Claude Kiteba",
-      "lien": "Père",
-      "profession": "Commerçant",
-      "photo": "https://pravatar.cc",
-    },
-    {
-      "nom": "Christine Baguni",
-      "lien": "Mère",
-      "profession": "Enseignante",
-      "photo": "https://pravatar.cc",
-    },
-    {
-      "nom": "Rachel Baguni",
-      "lien": "Sœur",
-      "profession": "Médecin Généraliste",
-      "photo": "https://pravatar.cc",
-    },
-    {
-      "nom": "Jonas Kiteba",
-      "lien": "Frère",
-      "profession": "Étudiant Electronicien",
-      "photo": "https://pravatar.cc",
-    },
-  ];
-
-  // --- PAGE 4 : VOS COORDONNÉES ---
+  // --- COORDONNÉES ---
   static const String telephone = "+243 838696468";
   static const String email = "joelkiteba@gmail.com";
   static const String adresse = "Quartier Katindo, Goma, Nord-Kivu, RDC";
-  static const String linkedin = "www.linkedin.com/in/joel-kiteba-144757367";
-  static const String github = "https://github.com/joel-kiteba18";
-  static const String facebook =
-      "https://www.facebook.com/profile.php?id=61573650112011";
+  static const String linkedin = "https://linkedin.com";
+  static const String github = "https://github.com";
+  static const String facebook = "https://facebook.com";
 }
 
 // ============================================================================
@@ -137,7 +113,7 @@ class MonCvApp extends StatelessWidget {
 }
 
 // ============================================================================
-// PAGE (1) : CONNEXION
+// PAGE (1) : CONNEXION (CONNECTÉE À POST /accounts/login)
 // ============================================================================
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -151,6 +127,7 @@ class _LoginPageState extends State<LoginPage> {
   final TextEditingController _identifiantController = TextEditingController();
   final TextEditingController _motDePasseController = TextEditingController();
   bool _masquerMotDePasse = true;
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -159,14 +136,52 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  void _seConnecter() {
-    if (_formKey.currentState != null && _formKey.currentState!.validate()) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute<void>(
-          builder: (BuildContext context) => const MainNavigationPage(),
+  Future<void> _seConnecter() async {
+    if (_formKey.currentState == null || !_formKey.currentState!.validate()) {
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final response = await http.post(
+        Uri.parse('$apiBaseUrl/accounts/login'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email': _identifiantController.text.trim(),
+          'password': _motDePasseController.text,
+        }),
+      );
+
+      final Map<String, dynamic> data = jsonDecode(response.body);
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200 && data['success'] == true) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute<void>(
+            builder: (BuildContext context) => const MainNavigationPage(),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: Colors.red.shade700,
+            content: Text(data['message'] ?? 'Email ou mot de passe incorrect'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: Colors.red.shade700,
+          content: Text('Impossible de joindre le serveur : $e'),
         ),
       );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -216,14 +231,15 @@ class _LoginPageState extends State<LoginPage> {
                       const SizedBox(height: 24),
                       TextFormField(
                         controller: _identifiantController,
+                        keyboardType: TextInputType.emailAddress,
                         decoration: const InputDecoration(
-                          labelText: "Identifiant",
-                          prefixIcon: Icon(Icons.person_outline),
+                          labelText: "Email",
+                          prefixIcon: Icon(Icons.email_outlined),
                           border: OutlineInputBorder(),
                         ),
                         validator: (String? value) {
                           if (value == null || value.trim().isEmpty) {
-                            return "Veuillez entrer votre identifiant";
+                            return "Veuillez entrer votre email";
                           }
                           return null;
                         },
@@ -260,18 +276,25 @@ class _LoginPageState extends State<LoginPage> {
                       SizedBox(
                         width: double.infinity,
                         height: 48,
-                        child: FilledButton.icon(
-                          onPressed: _seConnecter,
-                          icon: const Icon(Icons.login),
-                          label: const Text(
-                            "Se connecter",
-                            style: TextStyle(fontSize: 16),
-                          ),
+                        child: FilledButton(
+                          onPressed: _isLoading ? null : _seConnecter,
+                          child: _isLoading
+                              ? const SizedBox(
+                                  height: 22,
+                                  width: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.5,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text(
+                                  "Se connecter",
+                                  style: TextStyle(fontSize: 16),
+                                ),
                         ),
                       ),
                     ],
                   ),
-                  //Utilisez le code avec précaution.
                 ),
               ),
             ),
@@ -283,7 +306,7 @@ class _LoginPageState extends State<LoginPage> {
 }
 
 // ============================================================================
-// NAVIGATION PRINCIPALE (BOTTOM NAVIGATION BAR + DÉCONNEXION)
+// NAVIGATION PRINCIPALE (APRÈS CONNEXION)
 // ============================================================================
 class MainNavigationPage extends StatefulWidget {
   const MainNavigationPage({super.key});
@@ -292,21 +315,27 @@ class MainNavigationPage extends StatefulWidget {
 }
 
 class _MainNavigationPageState extends State {
-  int _indexActuel = 0;
-  late final List pages = const [AccueilCvPage(), FamillePage(), ContactPage()];
-  final List _titres = const ["Accueil - Mon CV", "Ma Famille", "Contact"];
+  int _selectedIndex = 0;
+  final List _pages = const [
+    AccueilCvPage(),
+    FamilleApiPage(),
+    EtudiantsApiPage(),
+    ContactsPage(),
+  ];
+  final List _titres = const [
+    "Mon CV",
+    "Ma Famille (API)",
+    "Étudiants (API)",
+    "Mes Coordonnées",
+  ];
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          _titres[_indexActuel],
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        centerTitle: true,
+        title: Text(_titres[_selectedIndex]),
         actions: [
           IconButton(
-            tooltip: "Se déconnecter",
+            tooltip: "Déconnexion",
             icon: const Icon(Icons.logout),
             onPressed: () {
               Navigator.pushReplacement(
@@ -319,16 +348,11 @@ class _MainNavigationPageState extends State {
           ),
         ],
       ),
-      body: IndexedStack(
-        index: _indexActuel,
-        children: List<Widget>.from(pages),
-      ),
+      body: _pages[_selectedIndex],
       bottomNavigationBar: NavigationBar(
-        selectedIndex: _indexActuel,
+        selectedIndex: _selectedIndex,
         onDestinationSelected: (int index) {
-          setState(() {
-            _indexActuel = index;
-          });
+          setState(() => _selectedIndex = index);
         },
         destinations: const [
           NavigationDestination(
@@ -342,9 +366,14 @@ class _MainNavigationPageState extends State {
             label: "Famille",
           ),
           NavigationDestination(
+            icon: Icon(Icons.school_outlined),
+            selectedIcon: Icon(Icons.school),
+            label: "Étudiants",
+          ),
+          NavigationDestination(
             icon: Icon(Icons.contact_phone_outlined),
             selectedIcon: Icon(Icons.contact_phone),
-            label: "Contact",
+            label: "Contacts",
           ),
         ],
       ),
@@ -353,314 +382,193 @@ class _MainNavigationPageState extends State {
 }
 
 // ============================================================================
-// PAGE (2) : ACCUEIL (CV COMPLET)
+// PAGE (2) : MON CV
 // ============================================================================
 class AccueilCvPage extends StatelessWidget {
   const AccueilCvPage({super.key});
-  @override
-  Widget build(BuildContext context) {
-    final ColorScheme colorScheme = Theme.of(context).colorScheme;
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Carte Profil
-          Card(
-            elevation: 2,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(20.0),
-              child: Column(
-                children: [
-                  CircleAvatar(
-                    radius: 52,
-                    backgroundColor: colorScheme.primaryContainer,
-                    child: ClipOval(
-                      child: Image.asset(
-                        "assets/images/joel.jpg",
-                        width: 104,
-                        height: 104,
-                        fit: BoxFit.cover,
-                        errorBuilder:
-                            (
-                              BuildContext context,
-                              Object error,
-                              StackTrace? stackTrace,
-                            ) {
-                              return Icon(
-                                Icons.person,
-                                size: 50,
-                                color: colorScheme.primary,
-                              );
-                            },
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Text(
-                    CvData.nomComplet,
-                    style: Theme.of(context).textTheme.headlineSmall
-                        ?.copyWith(fontWeight: FontWeight.bold),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    CvData.titreProfil,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: colorScheme.primary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(CvData.biographie, textAlign: TextAlign.center),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          // Expériences (Stages, projets, emplois)
-          _titreSection(
-            context,
-            Icons.work_outline,
-            "Expériences (Emplois, Stages, Projets)",
-          ),
-          ...CvData.experiences.map(
-            (Map<String, String> exp) => Card(
-              margin: const EdgeInsets.only(bottom: 10),
-              child: Padding(
-                padding: const EdgeInsets.all(14.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      exp["poste"] ?? "",
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      "${exp["entreprise"] ?? ""} • ${exp["periode"] ?? ""}",
-                      style: TextStyle(
-                        color: colorScheme.primary,
-                        fontSize: 13,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(exp["description"] ?? ""),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          // Formation
-          _titreSection(context, Icons.school_outlined, "Formation"),
-          ...CvData.formations.map(
-            (Map<String, String> form) => Card(
-              margin: const EdgeInsets.only(bottom: 10),
-              child: ListTile(
-                leading: Icon(Icons.school, color: colorScheme.primary),
-                title: Text(
-                  form["diplome"] ?? "",
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                subtitle: Text(
-                  "${form["ecole"] ?? ""} (${form["annee"] ?? ""})",
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          // Compétences techniques
-          _titreSection(context, Icons.code, "Compétences Techniques"),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(14.0),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: CvData.competencesTechniques
-                    .map(
-                      (String skill) => Chip(
-                        label: Text(skill),
-                        backgroundColor: colorScheme.secondaryContainer,
-                      ),
-                    )
-                    .toList(),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          // Compétences linguistiques
-          _titreSection(context, Icons.language, "Compétences Linguistiques"),
-          Card(
-            child: Column(
-              children: CvData.langues.entries
-                  .map(
-                    (MapEntry<String, String> e) => ListTile(
-                      dense: true,
-                      leading: const Icon(Icons.translate, size: 20),
-                      title: Text(
-                        e.key,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      trailing: Text(e.value),
-                    ),
-                  )
-                  .toList(),
-            ),
-          ),
-          const SizedBox(height: 16),
-          // Centres d'intérêt
-          _titreSection(context, Icons.interests_outlined, "Centres d'intérêt"),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(14.0),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: CvData.centresInteret
-                    .map(
-                      (String interet) => Chip(
-                        avatar: const Icon(Icons.star_border, size: 18),
-                        label: Text(interet),
-                      ),
-                    )
-                    .toList(),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _titreSection(BuildContext context, IconData icon, String titre) {
+  Widget _titreSection(BuildContext context, String titre, IconData icon) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0, left: 4.0),
+      padding: const EdgeInsets.only(top: 20, bottom: 10),
       child: Row(
         children: [
           Icon(icon, color: Theme.of(context).colorScheme.primary),
           const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              titre,
-              style: Theme.of(context).textTheme.titleMedium
-                  ?.copyWith(fontWeight: FontWeight.bold),
-            ),
+          Text(
+            titre,
+            style: Theme.of(context).textTheme.titleMedium
+                ?.copyWith(fontWeight: FontWeight.bold),
           ),
         ],
       ),
     );
   }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                CircleAvatar(
+                  radius: 45,
+                  backgroundImage: const AssetImage(CvData.photoProfilUrl),
+                  onBackgroundImageError: (_, __) {},
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  CvData.nomComplet,
+                  style: Theme.of(context).textTheme.headlineSmall
+                      ?.copyWith(fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  CvData.titreProfil,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(CvData.biographie, textAlign: TextAlign.center),
+              ],
+            ),
+          ),
+        ),
+        _titreSection(context, "Expériences Professionnelles", Icons.work),
+        ...CvData.experiences.map(
+          (exp) => Card(
+            child: ListTile(
+              title: Text(
+                exp["poste"] ?? "",
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              subtitle: Text(
+                "${exp["entreprise"]} (${exp["periode"]})\n${exp["description"]}",
+              ),
+              isThreeLine: true,
+            ),
+          ),
+        ),
+        _titreSection(context, "Formations", Icons.school),
+        ...CvData.formations.map(
+          (f) => Card(
+            child: ListTile(
+              title: Text(
+                f["diplome"] ?? "",
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              subtitle: Text("${f["ecole"]} • ${f["annee"]}"),
+            ),
+          ),
+        ),
+        _titreSection(context, "Compétences Techniques", Icons.code),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: CvData.competencesTechniques
+              .map((comp) => Chip(label: Text(comp)))
+              .toList(),
+        ),
+        _titreSection(context, "Langues", Icons.language),
+        ...CvData.langues.entries.map(
+          (e) => ListTile(
+            dense: true,
+            leading: const Icon(Icons.check_circle_outline),
+            title: Text(e.key),
+            subtitle: Text(e.value),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 // ============================================================================
-// PAGE (3) : FAMILLE
+// PAGE (3) : MA FAMILLE (CONNECTÉE À GET /famille-membres)
 // ============================================================================
-class FamillePage extends StatelessWidget {
-  const FamillePage({super.key});
+class FamilleApiPage extends StatefulWidget {
+  const FamilleApiPage({super.key});
+  @override
+  State createState() => _FamilleApiPageState();
+}
+
+class _FamilleApiPageState extends State {
+  late Future<List> _membresFuture;
+  @override
+  void initState() {
+    super.initState();
+    _membresFuture = _fetchMembres();
+  }
+
+  Future<List> _fetchMembres() async {
+    final response = await http.get(Uri.parse('$apiBaseUrl/famille-membres'));
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> body = jsonDecode(response.body);
+      if (body['success'] == true) {
+        return body['data'] as List;
+      }
+    }
+    throw Exception('Erreur lors du chargement des membres');
+  }
+
   @override
   Widget build(BuildContext context) {
-    final ColorScheme colorScheme = Theme.of(context).colorScheme;
-    return ListView.builder(
-      padding: const EdgeInsets.all(16.0),
-      itemCount: CvData.famille.length,
-      itemBuilder: (BuildContext context, int index) {
-        final Map<String, String> membre = CvData.famille[index];
-        return Card(
-          elevation: 2,
-          margin: const EdgeInsets.only(bottom: 12),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  radius: 34,
-                  backgroundColor: colorScheme.primaryContainer,
-                  child: ClipOval(
-                    child: Image.network(
-                      membre["photo"] ?? "",
-                      width: 68,
-                      height: 68,
-                      fit: BoxFit.cover,
-                      errorBuilder:
-                          (
-                            BuildContext context,
-                            Object error,
-                            StackTrace? stackTrace,
-                          ) {
-                            return Icon(
-                              Icons.person,
-                              size: 32,
-                              color: colorScheme.primary,
-                            );
-                          },
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        membre["nom"] ?? "",
-                        style: const TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: colorScheme.secondaryContainer,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          membre["lien"] ?? "",
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: colorScheme.onSecondaryContainer,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.work_outline,
-                            size: 16,
-                            color: Colors.grey,
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              membre["profession"] ?? "",
-                              style: const TextStyle(color: Colors.grey),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+    return FutureBuilder<List>(
+      future: _membresFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text('Erreur : ${snapshot.error}'),
             ),
+          );
+        }
+        final membres = snapshot.data ?? [];
+        if (membres.isEmpty) {
+          return const Center(
+            child: Text('Aucun membre de famille enregistré dans MySQL.'),
+          );
+        }
+        return RefreshIndicator(
+          onRefresh: () async {
+            setState(() {
+              _membresFuture = _fetchMembres();
+            });
+          },
+          child: ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: membres.length,
+            itemBuilder: (context, index) {
+              final m = membres[index];
+              final String? imageUrl = m['image_url'];
+              return Card(
+                margin: const EdgeInsets.only(bottom: 12),
+                child: ListTile(
+                  leading: CircleAvatar(
+                    radius: 26,
+                    backgroundImage: imageUrl != null
+                        ? NetworkImage(imageUrl)
+                        : null,
+                    child: imageUrl == null ? const Icon(Icons.person) : null,
+                  ),
+                  title: Text(
+                    '${m['nom']} ${m['postnom']} ${m['prenom']}',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: Text(
+                    '${m['parente']} • Né(e) à ${m['lieu_naissance']} le ${m['date_naissance']}',
+                  ),
+                ),
+              );
+            },
           ),
         );
       },
@@ -669,140 +577,142 @@ class FamillePage extends StatelessWidget {
 }
 
 // ============================================================================
-// PAGE (4) : CONTACT
+// PAGE (4) : ÉTUDIANTS (CONNECTÉE À GET /etudiants)
 // ============================================================================
-class ContactPage extends StatelessWidget {
-  const ContactPage({super.key});
-  Future ouvrirLien(BuildContext context, String url) async {
-    final Uri uri = Uri.parse(url);
-    try {
-      final bool ok = await launchUrl(
-        uri,
-        mode: LaunchMode.externalApplication,
-      );
-      if (!ok && context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text("Impossible d'ouvrir : $url")));
+class EtudiantsApiPage extends StatefulWidget {
+  const EtudiantsApiPage({super.key});
+  @override
+  State createState() => _EtudiantsApiPageState();
+}
+
+class _EtudiantsApiPageState extends State {
+  late Future<List> _etudiantsFuture;
+  @override
+  void initState() {
+    super.initState();
+    _etudiantsFuture = _fetchEtudiants();
+  }
+
+  Future<List> _fetchEtudiants() async {
+    final response = await http.get(Uri.parse('$apiBaseUrl/etudiants'));
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> body = jsonDecode(response.body);
+      if (body['success'] == true) {
+        return body['data'] as List;
       }
-    } catch (_) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Aucune application compatible trouvée."),
+    }
+    throw Exception('Erreur lors du chargement des étudiants');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List>(
+      future: _etudiantsFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(child: Text('Erreur : ${snapshot.error}'));
+        }
+        final etudiants = snapshot.data ?? [];
+        if (etudiants.isEmpty) {
+          return const Center(
+            child: Text('Aucun étudiant enregistré dans MySQL.'),
+          );
+        }
+        return RefreshIndicator(
+          onRefresh: () async {
+            setState(() {
+              _etudiantsFuture = _fetchEtudiants();
+            });
+          },
+          child: ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: etudiants.length,
+            itemBuilder: (context, index) {
+              final e = etudiants[index];
+              return Card(
+                margin: const EdgeInsets.only(bottom: 10),
+                child: ListTile(
+                  leading: const CircleAvatar(child: Icon(Icons.school)),
+                  title: Text(
+                    '${e['nom']} ${e['postnom']} ${e['prenom']}',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: Text('${e['adresse']} • ${e['telephone']}'),
+                ),
+              );
+            },
           ),
         );
-      }
+      },
+    );
+  }
+}
+
+// ============================================================================
+// PAGE (5) : MES COORDONNÉES
+// ============================================================================
+class ContactsPage extends StatelessWidget {
+  const ContactsPage({super.key});
+  Future _ouvrirLien(String url) async {
+    final Uri uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme colorScheme = Theme.of(context).colorScheme;
     return ListView(
-      padding: const EdgeInsets.all(16.0),
+      padding: const EdgeInsets.all(16),
       children: [
         Card(
-          elevation: 2,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              children: [
-                Icon(
-                  Icons.contact_mail_rounded,
-                  size: 48,
-                  color: colorScheme.primary,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  "Mes Coordonnées",
-                  style: Theme.of(context).textTheme.titleLarge
-                      ?.copyWith(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  "Appuyez sur un contact pour lancer l'action",
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ],
-            ),
+          child: ListTile(
+            leading: const Icon(Icons.phone),
+            title: const Text("Téléphone"),
+            subtitle: const Text(CvData.telephone),
+            onTap: () => _ouvrirLien("tel:${CvData.telephone}"),
           ),
         ),
-        const SizedBox(height: 16),
         Card(
-          child: Column(
-            children: [
-              ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: colorScheme.primaryContainer,
-                  child: Icon(Icons.phone, color: colorScheme.primary),
-                ),
-                title: const Text("Téléphone"),
-                subtitle: const Text(CvData.telephone),
-                trailing: const Icon(Icons.call_made, size: 18),
-                onTap: () => ouvrirLien(
-                  context,
-                  "tel:${CvData.telephone.replaceAll(' ', '')}",
-                ),
-              ),
-              const Divider(height: 1),
-              ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: colorScheme.primaryContainer,
-                  child: Icon(Icons.email, color: colorScheme.primary),
-                ),
-                title: const Text("E-mail"),
-                subtitle: const Text(CvData.email),
-                trailing: const Icon(Icons.call_made, size: 18),
-                onTap: () => ouvrirLien(
-                  context,
-                  "mailto:${CvData.email}?subject=Contact depuis votre application CV",
-                ),
-              ),
-              const Divider(height: 1),
-              ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: colorScheme.primaryContainer,
-                  child: Icon(Icons.location_on, color: colorScheme.primary),
-                ),
-                title: const Text("Adresse"),
-                subtitle: const Text(CvData.adresse),
-              ),
-            ],
+          child: ListTile(
+            leading: const Icon(Icons.email),
+            title: const Text("Email"),
+            subtitle: const Text(CvData.email),
+            onTap: () => _ouvrirLien("mailto:${CvData.email}"),
           ),
         ),
-        const SizedBox(height: 16),
         Card(
-          child: Column(
-            children: [
-              ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: colorScheme.secondaryContainer,
-                  child: Icon(
-                    Icons.business_center,
-                    color: colorScheme.secondary,
-                  ),
-                ),
-                title: const Text("LinkedIn"),
-                subtitle: const Text(CvData.linkedin),
-                trailing: const Icon(Icons.open_in_new, size: 18),
-                onTap: () => ouvrirLien(context, CvData.linkedin),
-              ),
-              const Divider(height: 1),
-              ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: colorScheme.secondaryContainer,
-                  child: Icon(Icons.code, color: colorScheme.secondary),
-                ),
-                title: const Text("GitHub"),
-                subtitle: const Text(CvData.github),
-                trailing: const Icon(Icons.open_in_new, size: 18),
-                onTap: () => ouvrirLien(context, CvData.github),
-              ),
-            ],
+          child: const ListTile(
+            leading: Icon(Icons.location_on),
+            title: Text("Adresse"),
+            subtitle: Text(CvData.adresse),
+          ),
+        ),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.business),
+            title: const Text("LinkedIn"),
+            subtitle: const Text(CvData.linkedin),
+            onTap: () => _ouvrirLien(CvData.linkedin),
+          ),
+        ),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.code),
+            title: const Text("GitHub"),
+            subtitle: const Text(CvData.github),
+            onTap: () => _ouvrirLien(CvData.github),
+          ),
+        ),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.facebook),
+            title: const Text("Facebook"),
+            subtitle: const Text("Profil Facebook"),
+            onTap: () => _ouvrirLien(CvData.facebook),
           ),
         ),
       ],
